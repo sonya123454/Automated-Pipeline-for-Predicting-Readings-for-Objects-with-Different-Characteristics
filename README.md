@@ -1,0 +1,1 @@
+# Automated-Pipeline-for-Predicting-Readings-for-Objects-with-Different-Characteristics
