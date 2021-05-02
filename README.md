@@ -14,7 +14,7 @@ To get started, you will need:
 3) To get started, run the **start.py** file.
 4) To predict the time series, run the **get_prediction.py** file with options you need in get_test function.
 
-![Alt-текст](https://github.com/sonya123454/Automated-Pipeline-for-Predicting-Readings-for-Objects-with-Different-Characteristics/blob/main/docs/images/pipeline.png "Орк")
+![Alt-текст](https://github.com/sonya123454/Automated-Pipeline-for-Predicting-Readings-for-Objects-with-Different-Characteristics/blob/main/docs/images/pipeline.png "Scheme")
 
 
 
