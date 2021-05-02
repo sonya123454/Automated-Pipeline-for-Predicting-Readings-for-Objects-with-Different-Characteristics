@@ -9,8 +9,8 @@ This pipeline was created in an attempt to automate the prediction of time serie
 
 ## How to start
 To get started, you will need: 
-1) Write the get_data function in the data file, which should return all the available time series in this task. You can find an example in our file.
-2) Write the get_test function.
+1) Write the get_data function in the **data** file, which should return all the available time series in this task. You can find an example in our file.
+2) Write the get_test function also in the **data** file.
 3) To get started, run the **start.py** file.
 4) To predict the time series, run the **get_prediction.py** file with options you need in get_test function.
 
