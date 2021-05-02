@@ -23,12 +23,13 @@ import sys
 import time
 #own libraries
 import prediction as p
-from my_db import init_config #libs.
-import my_db as db #from libs 
-#import prediction as p
+from my_db import init_config 
+import my_db as db 
 #machine learning
 from sklearn.cluster import KMeans
 from statsmodels.tsa.stattools import pacf
+import xgboost as xgb
+
 #time series machine learning
 from statsmodels.tsa.seasonal import seasonal_decompose
 # anomalies
@@ -235,117 +236,6 @@ def train_test_split(data, test_size=0.15):#, lag_start=5, lag_end=20
 
     return X_train, X_test, y_train, y_test
 
-################################################################
-electricity_db = {
-'18431': '44044',
-}
-heat_db = {
-'6140': '48457',
-'8706': '44883',
-'9044': '43824',
-'9292': '43831',
-'11470': '43827',
-'11493': '43832',
-'13287': '43821',
-'13406':'43828',
-'13447':'43826',
-'13732':'43823',
-'18217':'48378',
-'24764':'45138',
-'26065':'48363',
-'28288':'48354',
-'37510':'48470',
-#'37598':'48470',
-#'37919':'61543',
-'38486':'48472',
-'38497':'48473'}
-#'54108':'48932',
-#'54116':'48932',
-    
-hot_water_db = {
-    '8801': '44883',
-'8909':'44881',
-'12689':'48646',
-'12741':'48643',
-'12750':'48631',
-'15499':'48933',
-#'18274':'48315',
-'18883':'48364',
-'22265':'43633',
-'22323':'43633',
-'22454':'43633',
-'22467':'43633',
-'22913'	:'49046',
-'23121':	'43661',
-'26032':	'48374',
-'26108':	'48373',
-'28064':	'48361',
-'28122':	'48353',
-'28426':	'48356',
-'31134':	'48887',
-#'31139':	'48889',
-'34564':	'43595',
-'34606':	'43594',
-'34616':	'43597',
-#'34624':	'43585',
-'34632':	'43590',
-'34639':	'43584',
-'34648':	'43592',
-'37012':	'49041',
-'37016':	'49045',
-'52177':	'44349',
-'54687':	'45199',
-'54712':	'45202',
-'54717':	'45203',
-'54786':	'45250',
-'54791':	'45217',
-'54793':	'45200',
-}
-
-###################################################################
-## Получение данных
-def get_data(engine, plot = False):
-	timeseries_water = []
-	for i in hot_water_db:
-		df = db.get_informaion_from_first_forecast_qisee(engine, 20, i, hot_water_db[i])
-		try:
-			df, res = p.preparing_data(df)
-			if (plot):
-				fig = plt.figure(figsize=[15, 10])
-				tsplot_only(np.array(df.ec_d))
-				plt.show()
-			timeseries_water.append(df)
-		except:
-			print(i)
-			continue
-	timeseries_el = []
-	for i in electricity_db:
-		df = db.get_informaion_from_first_forecast_qisee(engine, 30, i, electricity_db[i])
-		try:
-			df, res = p.preparing_data(df)
-			if (plot):
-				fig = plt.figure(figsize=[15, 10])
-				tsplot_only(np.array(df.ec_d))
-				plt.show()
-			timeseries_el.append(df)
-		except:
-			print(i)
-			continue
-	timeseries_heat = []
-	for i in heat_db:
-		df = db.get_informaion_from_first_forecast_qisee(engine, 10, i, heat_db[i])
-		try:
-			df, res = p.preparing_data(df)
-			winter_df, summer_df = distributions_division(df.ec_d)
-			if (plot):
-				tsplot(np.array(df.ec_d))
-				plt.show()
-			timeseries_heat.append(df)
-		except:
-			print(i)
-			continue
-	return timeseries_water, timeseries_el, timeseries_heat
-
 ####################################################################
 ### features
 import math
@@ -380,7 +270,7 @@ def heating_switched_off(pred):
     return heat
 	
 import datetime 
-def get_features(df, engine, lags = False):
+def get_features(df, engine, lags = False, target = "ec_d"):
 
 	cols = df.columns.values
 	cols = np.append(cols, ['is_holiday', 'temperature', 'sun_time'])
@@ -414,10 +304,102 @@ def get_features(df, engine, lags = False):
 	if (lags == True):
 		for i in range(1, 365):
 			lag = 'lag' + str(i)
-			exog[lag] = np.append(np.repeat(np.nan, i), exog.ec_d[:-i].values)
+			exog[lag] = np.append(np.repeat(np.nan, i), exog[target][:-i].values)
 
 	exog['heat_off'] = heating_switched_off(exog.temperature)
 	exog = exog.dropna()
 	return exog
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import SelectFromModel
+from sklearn.linear_model import Lasso#, LogisticRegression
 
+def select_features(df, engine, max_features = 10, target = "ec_d"):
+    Z = []
+    X_train, _, y_train, _ = train_test_split(df, 0)
+
+    ### xgb
+    Z.append(XGB_features(df))
+    ### corr
+    cor = df.corr()
+    feature_corr = dict(sorted(np.abs(cor[target]).to_dict().items(), key=operator.itemgetter(1), reverse=True)[:max_features])
+    Z.append(feature_corr)
+    ### forward
+    try:
+        feature_fw = forward_selection(X_train, y_train, significance_level=0.05)
+        Z.append(feature_fw)
+		
+    except:
+        a = 1
+    ### lasso
+    scaler = StandardScaler()
+    scaler.fit(X_train.fillna(0))
+
+    sel_ = SelectFromModel(Lasso(), max_features = max_features)
+    sel_.fit(scaler.transform(X_train), y_train)
+    feature_score = pd.DataFrame(data = sel_.get_support().astype(int), columns = ['is_important'])
+    feature_score.index = X_train.columns.values
+    feature_lasso = feature_score.loc[feature_score['is_important'] > 0]['is_important'].to_dict()
+
+    Z.append(feature_lasso)
+
+    #### 
+    features = []
+    print(Z)
+    for z in Z:
+        new_z = []
+        for j in X_train.columns:
+            if j in z:
+                new_z.append(1)
+            else:
+                new_z.append(0)
+        features.append(new_z)
+    features = pd.DataFrame(features, columns = X_train.columns)
+    features_ = features.columns[features.sum() >= len(Z) / 2].values
+
+
+    d = features.shape[1]
+    kbar = features.sum(1).mean();
+    stability = 1 - features.var(0, ddof=1).mean() / ((kbar/d)*(1-kbar/d))
+    #print('stability', stability)
+    return features_
 	
+import statsmodels.api as sm
+def forward_selection(data, target, significance_level=0.05):
+    initial_features = data.columns.tolist()
+    best_features = []
+    while (len(initial_features)>0):
+        remaining_features = list(set(initial_features)-set(best_features))
+        new_pval = pd.Series(index=remaining_features)
+        for new_column in remaining_features:
+            model = sm.OLS(target, sm.add_constant(data[best_features+[new_column]])).fit()
+            new_pval[new_column] = model.pvalues[new_column]
+        min_p_value = new_pval.min()
+        if(min_p_value<significance_level):
+            best_features.append(new_pval.idxmin())
+        else:
+            break
+    return best_features
+	
+def XGB_features(data, scale=1.96, max_features = 10):
+
+    # исходные данные
+    X_train, _, y_train, _ = train_test_split(data,  0)
+    dtrain = xgb.DMatrix(X_train, label=y_train)
+
+    # задаём параметры
+    params = {
+        'objective': 'reg:squarederror',#'objective': 'reg:linear',
+        'booster':'gbtree'#'booster':'gblinear'
+    }
+    trees = 100
+
+    # прогоняем на кросс-валидации с метрикой rmse
+    cv = xgb.cv(params, dtrain, metrics = ('rmse'), verbose_eval=False, nfold=10, show_stdv=False, num_boost_round=trees)
+
+    # обучаем xgboost с оптимальным числом деревьев, подобранным на кросс-валидации
+    bst = xgb.train(params, dtrain, num_boost_round=cv['test-rmse-mean'].argmin())
+    
+    feature_score = bst.get_score()
+    feature_top_10 = dict(sorted(feature_score.items(), key=operator.itemgetter(1), reverse=True)[:max_features])
+
+    return feature_top_10
