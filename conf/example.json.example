@@ -1,0 +1,7 @@
+{
+    "db":
+    {
+        "energy":         "postgresql://db_name:password@port:host" 
+		
+    }
+}
