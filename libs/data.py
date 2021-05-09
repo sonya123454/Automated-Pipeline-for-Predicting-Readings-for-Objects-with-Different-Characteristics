@@ -1,6 +1,5 @@
-#%run libs/libs.py
+import libs
 import my_db as db 
-import prediction as p
 
 electricity_db = {
 '18431': '44044',
@@ -68,45 +67,61 @@ hot_water_db = {
 '54793':	'45200',
 }
 
+
+test_db = {
+	'20': {
+		'6140': '48457'
+	}
+}
+
 ###################################################################
 ## Получение данных
 def get_data(engine, plot = False):
 	timeseries = []
 	for i in hot_water_db:
+		
+		#try:
 		df = db.get_informaion_from_first_forecast_qisee(engine, 20, i, hot_water_db[i])
-		try:
-			df, res = p.preparing_data(df)
-			if (plot):
-				fig = plt.figure(figsize=[15, 10])
-				tsplot_only(np.array(df.ec_d))
-				plt.show()
-			timeseries.append(df)
-		except:
-			print(i, 'cannot get')
-			continue
+		df, res = libs.preparing_data(df)#, fill_method = 'linear'
+		if (plot):
+			fig = plt.figure(figsize=[15, 10])
+			tsplot_only(np.array(df.ec_d))
+			plt.show()
+		timeseries.append(df)
+		#except:
+		#	print(i, 'cannot get')
 	for i in electricity_db:
-		df = db.get_informaion_from_first_forecast_qisee(engine, 30, i, electricity_db[i])
-		try:
-			df, res = p.preparing_data(df)
+		
+		#try:
+			df = db.get_informaion_from_first_forecast_qisee(engine, 30, i, electricity_db[i])
+			df, res = libs.preparing_data(df)#, fill_method = 'linear'
 			if (plot):
 				fig = plt.figure(figsize=[15, 10])
 				tsplot_only(np.array(df.ec_d))
 				plt.show()
 			timeseries.append(df)
-		except:
-			print(i, 'cannot get')
-			continue
+		#except:
+		#	print(i, 'cannot get')
 	for i in heat_db:
+		
+		#try:
 		df = db.get_informaion_from_first_forecast_qisee(engine, 10, i, heat_db[i])
-		try:
-			df, res = p.preparing_data(df)
-			winter_df, summer_df = distributions_division(df.ec_d)
-			if (plot):
-				tsplot(np.array(df.ec_d))
-				plt.show()
-			timeseries.append(df)
-		except:
-			print(i, 'cannot get')
-			continue
+		df, res = libs.preparing_data(df)#, fill_method = 'linear'
+		if (plot):
+			tsplot(np.array(df.ec_d))
+			plt.show()
+		timeseries.append(df)
+		#except:
+		#	print(i, 'cannot get')
 			
+	return timeseries
+	
+	
+def get_data_for_prediction(engine):
+	timeseries = []
+	for j in test_db:
+		for i in test_db[j]:
+			df, res = libs.preparing_data(db.get_informaion_from_first_forecast_qisee(engine, j, i, test_db[j][i]))
+			return df
+			timeseries.append(df)
 	return timeseries
